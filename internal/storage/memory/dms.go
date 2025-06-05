@@ -4,14 +4,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yourusername/scenyx-backend/internal/models"
+	"github.com/Vasu1712/scenyx-backend/internal/models"
 	"github.com/google/uuid"
 )
 
 type DMStore struct {
 	mu            sync.RWMutex
 	conversations map[string]*models.DMConversation // dmID -> conversation
-	userIndex     map[string][]string              // userID -> []dmID
+	userIndex     map[string][]string               // userID -> []dmID
 }
 
 func NewDMStore() *DMStore {

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/Vasu1712/scenyx-backend/internal/api/dms"
 	"github.com/Vasu1712/scenyx-backend/internal/storage/memory"
@@ -10,18 +11,29 @@ import (
 )
 
 func main() {
+	port := "8080"
+	if p := os.Getenv("PORT"); p != "" {
+		port = p
+	}
+
 	dmStore := memory.NewDMStore()
 	hub := ws.NewHub()
 	go hub.Run()
 
 	dmHandler := &dms.DMHandler{Store: dmStore, Hub: hub}
 
-	http.HandleFunc("/api/v1/dms/start", dmHandler.StartOrGetConversation)
-	http.HandleFunc("/api/v1/dms/list", dmHandler.ListConversations)
-	http.HandleFunc("/api/v1/dms/messages", dmHandler.GetMessages)
-	http.HandleFunc("/api/v1/dms/send", dmHandler.SendMessage)
-	http.HandleFunc("/ws/dms", dmHandler.ServeWS)
+	mux := http.NewServeMux()
+	dms.RegisterDMRoutes(mux, dmHandler)
 
-	log.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// Optional: catch-all logging for 404s
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[404] %s %s", r.Method, r.URL.Path)
+		http.NotFound(w, r)
+	})
+
+	log.Printf("Scenyx backend listening on :%s", port)
+	err := http.ListenAndServe(":"+port, mux)
+	if err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
 }

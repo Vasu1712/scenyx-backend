@@ -2,20 +2,21 @@ package ws
 
 import (
 	"sync"
+	"github.com/gorilla/websocket"
 )
 
 type Client struct {
 	UserID   string
 	DMID     string
 	Send     chan []byte
-	Conn     WebSocketConn // interface for Gorilla/WebSocket
+	Conn     *websocket.Conn // interface for Gorilla/WebSocket
 }
 
 type Hub struct {
-	clients    map[string]map[*Client]bool // dmID -> clients
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan BroadcastMessage
+	Clients    map[string]map[*Client]bool // dmID -> clients
+	Register   chan *Client
+	Unregister chan *Client
+	Broadcast  chan BroadcastMessage
 	mu         sync.RWMutex
 }
 
@@ -26,40 +27,40 @@ type BroadcastMessage struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[string]map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan BroadcastMessage),
+		Clients:    make(map[string]map[*Client]bool),
+		Register:   make(chan *Client),
+		Unregister: make(chan *Client),
+		Broadcast:  make(chan BroadcastMessage),
 	}
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
+		case client := <-h.Register:
 			h.mu.Lock()
-			if h.clients[client.DMID] == nil {
-				h.clients[client.DMID] = make(map[*Client]bool)
+			if h.Clients[client.DMID] == nil {
+				h.Clients[client.DMID] = make(map[*Client]bool)
 			}
-			h.clients[client.DMID][client] = true
+			h.Clients[client.DMID][client] = true
 			h.mu.Unlock()
-		case client := <-h.unregister:
+		case client := <-h.Unregister:
 			h.mu.Lock()
-			if clients, ok := h.clients[client.DMID]; ok {
+			if clients, ok := h.Clients[client.DMID]; ok {
 				if _, ok := clients[client]; ok {
 					delete(clients, client)
 					close(client.Send)
 				}
 			}
 			h.mu.Unlock()
-		case msg := <-h.broadcast:
+		case msg := <-h.Broadcast:
 			h.mu.RLock()
-			for client := range h.clients[msg.DMID] {
+			for client := range h.Clients[msg.DMID] {
 				select {
 				case client.Send <- msg.Data:
 				default:
 					close(client.Send)
-					delete(h.clients[msg.DMID], client)
+					delete(h.Clients[msg.DMID], client)
 				}
 			}
 			h.mu.RUnlock()

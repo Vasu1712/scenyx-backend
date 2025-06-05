@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Vasu1712/scenyx-backend/internal/storage/memory"
+	"github.com/Vasu1712/scenyx-backend/internal/ws"
 	"github.com/gorilla/websocket"
-	"github.com/yourusername/scenyx-backend/internal/models"
-	"github.com/yourusername/scenyx-backend/internal/storage/memory"
-	"github.com/yourusername/scenyx-backend/internal/ws"
 )
 
 type DMHandler struct {
