@@ -34,7 +34,7 @@ func NewPostgresSceneStore(dataSourceName string) (*PostgresSceneStore, error) {
 	db.SetMaxIdleConns(10) // Max number of idle connections in the pool
 	db.SetConnMaxLifetime(5 * time.Minute) // Max lifetime for a connection
 
-	log.Println("Successfully connected to PostgreSQL database.")
+	log.Println("Successfully connected to PostgreSQL database for Scenes.")
 
 	return &PostgresSceneStore{db: db}, nil
 }
@@ -99,8 +99,6 @@ func (s *PostgresSceneStore) GetScenesForUser(userID string) []*models.Scene {
 
 	// Query for scenes created by the user OR where the user is a participant
 	// Use UNION to combine results and DISTINCT to avoid duplicates if a user created and is also a participant (though unlikely for creator to be in scene_participants explicitly if always joining on creation).
-	// A simpler approach is to get created scenes and then joined scenes and deduplicate if necessary,
-	// or write a single complex query. For simplicity, let's join.
 	query := `
 		SELECT DISTINCT ON (s.id)
 			s.id, s.name, s.artist_name, s.creator_id,

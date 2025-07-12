@@ -2,19 +2,20 @@ package scenes
 
 import (
 	"encoding/json" // For encoding and decoding JSON
-	"fmt"
-	"log"      // For logging information
-	"net/http" // For HTTP request and response handling
+	"fmt"           // For string formatting, especially for redirects
+	"log"           // For logging information
+	"net/http"      // For HTTP request and response handling
 
-	"github.com/Vasu1712/scenyx-backend/internal/storage/memory" // Import the memory package to use SceneStore
+	"github.com/Vasu1712/scenyx-backend/internal/models" // Import models package to use Scene struct
+	"github.com/Vasu1712/scenyx-backend/internal/storage/postgres" // Import the postgres package to use PostgresSceneStore
 	"github.com/Vasu1712/scenyx-backend/internal/ws"             // Import the WebSocket hub
-	"github.com/gorilla/websocket"                               // WebSocket library
+	"github.com/gorilla/websocket"                              // WebSocket library
 )
 
 // SceneHandler holds the dependencies for handling scene-related HTTP requests.
 type SceneHandler struct {
-	Store *memory.SceneStore // A pointer to the SceneStore to interact with scene data
-	Hub   *ws.Hub            // A pointer to the WebSocket Hub for active user tracking
+	Store *postgres.PostgresSceneStore // A pointer to the PostgresSceneStore to interact with scene data
+	Hub   *ws.Hub                      // A pointer to the WebSocket Hub for active user tracking
 }
 
 // CreateScene handles the HTTP POST request to create a new scene.
@@ -43,8 +44,11 @@ func (h *SceneHandler) CreateScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the CreateScene method on the SceneStore to save the new scene.
-	// The 'scene' variable will correctly infer its type as *models.Scene
 	scene := h.Store.CreateScene(req.Name, req.ArtistName, req.CreatorID)
+	if scene == nil {
+		http.Error(w, "Failed to create scene", http.StatusInternalServerError)
+		return
+	}
 
 	// Set the Content-Type header to application/json for the response
 	w.Header().Set("Content-Type", "application/json")
@@ -53,8 +57,6 @@ func (h *SceneHandler) CreateScene(w http.ResponseWriter, r *http.Request) {
 	// Encode the created scene object into JSON and write it to the response body
 	json.NewEncoder(w).Encode(scene)
 
-	// Corrected log.Printf line:
-	// - Ensure all fields accessed (ID, Name, ArtistName, CreatorID, Listeners) are part of models.Scene
 	log.Printf("Created scene: ID=%s, Name=%s, Artist=%s, CreatorID=%s, Listeners=%d",
 		scene.ID, scene.Name, scene.ArtistName, scene.CreatorID, scene.Listeners)
 }
@@ -71,9 +73,11 @@ func (h *SceneHandler) ListScenes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scenes := h.Store.GetScenesForUser(userID)
+	if scenes == nil { // Handle case where no scenes are found or an error occurred
+		scenes = []*models.Scene{} // Return an empty slice instead of nil
+	}
 
 	// For each scene, dynamically update active users from the hub before sending
-	// Note: This is for the list API. For a single scene's data, GetSceneData is more precise.
 	for _, scene := range scenes {
 		scene.ActiveUsers = h.Hub.GetActiveSceneUsersCount(scene.ID)
 	}
@@ -159,6 +163,10 @@ func (h *SceneHandler) JoinScene(w http.ResponseWriter, r *http.Request) {
 
 	if h.Store.JoinScene(req.SceneID, req.UserID) {
 		scene := h.Store.GetScene(req.SceneID) // Get updated scene to return current listener count
+		if scene == nil {
+			http.Error(w, "Scene not found after join operation", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -193,6 +201,11 @@ func (h *SceneHandler) LeaveScene(w http.ResponseWriter, r *http.Request) {
 
 	if h.Store.LeaveScene(req.SceneID, req.UserID) {
 		scene := h.Store.GetScene(req.SceneID) // Get updated scene to return current listener count
+		if scene == nil {
+			// This case means the scene might have been deleted or an error occurred after leaving
+			http.Error(w, "Scene not found or error after leave operation", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -204,6 +217,8 @@ func (h *SceneHandler) LeaveScene(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GenerateShareLink confirms a scene exists and returns its ID for link generation.
+// This is a GET request, taking scene_id as a query parameter.
 func (h *SceneHandler) GenerateShareLink(w http.ResponseWriter, r *http.Request) {
 	sceneID := r.URL.Query().Get("scene_id")
 
@@ -228,7 +243,6 @@ func (h *SceneHandler) GenerateShareLink(w http.ResponseWriter, r *http.Request)
 	})
 	log.Printf("Share link requested for scene ID: %s", sceneID)
 }
-
 
 // JoinSceneByLink handles a user joining a scene via a shared URL.
 // It expects scene_id and user_id as query parameters.
